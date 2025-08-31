@@ -11,6 +11,7 @@ from typing import List, Optional
 
 from googleapiclient.errors import HttpError
 from .api_enablement import get_api_enablement_message
+from core.log_capture import capture_logs
 from auth.google_auth import GoogleAuthenticationError
 
 logger = logging.getLogger(__name__)
