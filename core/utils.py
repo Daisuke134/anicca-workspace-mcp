@@ -260,7 +260,21 @@ def handle_http_errors(tool_name: str, is_read_only: bool = False, service_type:
 
             for attempt in range(max_retries):
                 try:
-                    return await func(*args, **kwargs)
+                    # 開発者向け: ツール実行時の内部ログを返り値に同封（オプション）
+                    echo_logs = os.getenv("WORKSPACE_MCP_ECHO_TOOL_TRACES", "false").lower() == "true"
+                    if echo_logs:
+                        logger_names = [
+                            "gmail", "gcalendar", "gdrive", "gdocs", "gsheets",
+                            "gchat", "gforms", "gslides", "gtasks", "gsearch",
+                        ]
+                        async with _capture_async(logger_names) as get_text:
+                            result = await func(*args, **kwargs)
+                            logs = (get_text() or "").strip()
+                            if logs:
+                                result = f"[TOOL LOGS BEGIN]\n{logs}\n[TOOL LOGS END]\n{result}"
+                            return result
+                    else:
+                        return await func(*args, **kwargs)
                 except ssl.SSLError as e:
                     if is_read_only and attempt < max_retries - 1:
                         delay = base_delay * (2**attempt)
@@ -322,3 +336,22 @@ def handle_http_errors(tool_name: str, is_read_only: bool = False, service_type:
         return wrapper
 
     return decorator
+
+
+class _AsyncCaptureContext:
+    def __init__(self, logger_names):
+        self.logger_names = logger_names
+        self._mgr = None
+        self._getter = None
+
+    async def __aenter__(self):
+        self._mgr = capture_logs(self.logger_names, level=logging.INFO)
+        self._getter = self._mgr.__enter__()
+        return self._getter
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self._mgr.__exit__(exc_type, exc, tb)
+
+
+def _capture_async(logger_names):
+    return _AsyncCaptureContext(logger_names)
