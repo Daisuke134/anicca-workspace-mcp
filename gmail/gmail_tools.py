@@ -815,7 +815,10 @@ def _format_thread_content(thread_data: dict, thread_id: str) -> str:
 @require_google_service("gmail", "gmail_read")
 @handle_http_errors("get_gmail_thread_content", is_read_only=True, service_type="gmail")
 async def get_gmail_thread_content(
-    service, thread_id: str, user_google_email: str
+    service,
+    thread_id: Optional[str] = None,
+    user_google_email: str = '',
+    message_id: Optional[str] = None,
 ) -> str:
     """
     Retrieves the complete content of a Gmail conversation thread, including all messages.
@@ -827,16 +830,33 @@ async def get_gmail_thread_content(
     Returns:
         str: The complete thread content with all messages formatted for reading.
     """
+    resolved_thread_id = thread_id
+    if not resolved_thread_id and message_id:
+        try:
+            msg = await asyncio.to_thread(
+                lambda: service.users().messages().get(userId="me", id=message_id, format="metadata").execute()
+            )
+            resolved_thread_id = msg.get("threadId")
+            logger.info(
+                f"[get_gmail_thread_content] Resolved threadId from message_id '{message_id}': '{resolved_thread_id}'"
+            )
+        except Exception as e:
+            logger.warning(
+                f"[get_gmail_thread_content] Failed to resolve threadId from message_id '{message_id}': {e}"
+            )
+    if not resolved_thread_id:
+        raise ValueError("Either thread_id or message_id must be provided.")
+
     logger.info(
-        f"[get_gmail_thread_content] Invoked. Thread ID: '{thread_id}', Email: '{user_google_email}'"
+        f"[get_gmail_thread_content] Invoked. Thread ID: '{resolved_thread_id}', Email: '{user_google_email}'"
     )
 
     # Fetch the complete thread with all messages
     thread_response = await asyncio.to_thread(
-        service.users().threads().get(userId="me", id=thread_id, format="full").execute
+        lambda: service.users().threads().get(userId="me", id=resolved_thread_id, format="full").execute()
     )
 
-    return _format_thread_content(thread_response, thread_id)
+    return _format_thread_content(thread_response, resolved_thread_id or '')
 
 
 @server.tool()
@@ -1173,4 +1193,3 @@ async def batch_modify_gmail_message_labels(
         actions.append(f"Removed labels: {', '.join(remove_label_ids)}")
 
     return f"Labels updated for {len(message_ids)} messages: {'; '.join(actions)}"
-
