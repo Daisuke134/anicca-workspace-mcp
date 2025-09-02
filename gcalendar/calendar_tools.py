@@ -203,6 +203,7 @@ async def get_events(
     max_results: int = 25,
     query: Optional[str] = None,
     detailed: bool = False,
+    timezone: Optional[str] = None,
 ) -> str:
     """
     Retrieves events from a specified Google Calendar. Can retrieve a single event by ID or multiple events within a time range.
@@ -224,6 +225,8 @@ async def get_events(
     logger.info(
         f"[get_events] Raw parameters - event_id: '{event_id}', time_min: '{time_min}', time_max: '{time_max}', query: '{query}', detailed: {detailed}"
     )
+    if timezone:
+        logger.info(f"[get_events] Client timezone: {timezone}")
 
     # Handle single event retrieval
     if event_id:
@@ -239,6 +242,15 @@ async def get_events(
         effective_time_min = formatted_time_min or (
             datetime.datetime.utcnow().isoformat() + "Z"
         )
+        # If a date-only was provided and a timezone is specified, align to local midnight
+        if timezone and time_min and len(time_min) == 10:
+            try:
+                from zoneinfo import ZoneInfo
+                dt = datetime.datetime.fromisoformat(time_min)
+                local_start = datetime.datetime(dt.year, dt.month, dt.day, 0, 0, 0, tzinfo=ZoneInfo(timezone))
+                effective_time_min = local_start.isoformat()
+            except Exception as e:
+                logger.warning(f"[get_events] timezone normalize failed for time_min: {e}")
         if time_min is None:
             logger.info(
                 f"time_min not provided, defaulting to current UTC time: {effective_time_min}"
@@ -249,6 +261,15 @@ async def get_events(
             )
 
         effective_time_max = _correct_time_format_for_api(time_max, "time_max")
+        if timezone and time_max and len(time_max) == 10:
+            try:
+                from zoneinfo import ZoneInfo
+                dt = datetime.datetime.fromisoformat(time_max)
+                next_day = dt + datetime.timedelta(days=1)
+                local_end = datetime.datetime(next_day.year, next_day.month, next_day.day, 0, 0, 0, tzinfo=ZoneInfo(timezone))
+                effective_time_max = local_end.isoformat()
+            except Exception as e:
+                logger.warning(f"[get_events] timezone normalize failed for time_max: {e}")
         if time_max:
             logger.info(
                 f"time_max processing: original='{time_max}', formatted='{effective_time_max}'"
@@ -780,5 +801,4 @@ async def delete_event(service, user_google_email: str, event_id: str, calendar_
     confirmation_message = f"Successfully deleted event (ID: {event_id}) from calendar '{calendar_id}' for {user_google_email}."
     logger.info(f"Event deleted successfully for {user_google_email}. ID: {event_id}")
     return confirmation_message
-
 
