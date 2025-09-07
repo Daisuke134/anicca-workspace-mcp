@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional, Union
 from importlib import metadata
 
@@ -116,6 +117,25 @@ def get_auth_provider() -> Optional[Union[GoogleWorkspaceAuthProvider, GoogleRem
     """Gets the global authentication provider instance."""
     return _auth_provider
 
+@server.custom_route("/oauth21/session/remove", methods=["POST"])
+async def remove_oauth21_session(request: Request):
+    try:
+        admin_secret = request.headers.get("X-Admin-Secret")
+        expected = os.getenv("ADMIN_SHARED_SECRET")
+        if not expected or admin_secret != expected:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        data = await request.json()
+        email = (data or {}).get("email")
+        if not email:
+            return JSONResponse({"error": "email required"}, status_code=400)
+        store = get_oauth21_session_store()
+        store.remove_session(email)
+        logger.info(f"Admin removed OAuth 2.1 session for {email}")
+        return JSONResponse({"success": True})
+    except Exception as e:
+        logger.error(f"remove_oauth21_session error: {e}", exc_info=True)
+        return JSONResponse({"error": "internal"}, status_code=500)
+
 @server.custom_route("/health", methods=["GET"])
 async def health_check(request: Request):
     try:
@@ -220,4 +240,3 @@ async def start_google_auth(service_name: str, user_google_email: str = USER_GOO
     except Exception as e:
         logger.error(f"Failed to start Google authentication flow: {e}", exc_info=True)
         return f"**Error:** An unexpected error occurred: {e}"
-
