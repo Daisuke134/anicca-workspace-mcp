@@ -124,11 +124,12 @@ CUSTOM_SEARCH_SCOPES = [
     CUSTOM_SEARCH_SCOPE
 ]
 
-# Tool-to-scopes mapping
+# Tool-to-scopes mapping（最小権限）
 TOOL_SCOPES_MAP = {
     'gmail': GMAIL_SCOPES,
     'drive': DRIVE_SCOPES,
-    'calendar': CALENDAR_SCOPES,
+    # カレンダーは「予定の参照・編集」に必要最小の2スコープに限定
+    'calendar': [CALENDAR_EVENTS_SCOPE, CALENDAR_READONLY_SCOPE],
     'docs': DOCS_SCOPES,
     'sheets': SHEETS_SCOPES,
     'chat': CHAT_SCOPES,
